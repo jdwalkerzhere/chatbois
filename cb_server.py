@@ -9,23 +9,66 @@ import uvicorn
 
 
 class User(BaseModel):
+    """
+    User class held in the `ChatboisServer.users` field
+
+    Fields:
+        - username (str): The name the server recognizes the user by
+        - uuid (UUID4): [Currently Unneccessary] Useful down the line if users want to replace their username
+    """
     username: str
     uuid: UUID4
 
 
 class Message(BaseModel):
+    """
+    Message class held in `Chat.history` field
+
+    Fields:
+        - sender (str): The user that sent the message to the server
+        - dest (str): The name of the *Chat* that the message was sent to
+        - content(str): The actual message content 
+    """
     sender: str
     dest: str
     content: str
 
 
 class Chat(BaseModel):
+    """
+    Chat class held in `ChatboisServer.chats` field
+
+    Fields:
+        - name (str): The name the server recognizes the chat by
+        - users (set[str]): The users that are able to access this chat instance
+        - history (list[Message]): The message history of that chat among its users (No implicit copying of default list thanks to Pydantic BaseModel) 
+    """
     name: str
     users: set[str]
     history: list[Message] = []
 
 
 class ChatboisServer:
+    """
+    The ChatboisServer is the *heavy* source-of-truth server for the chatbois program.
+
+    The Server holds all of the state for users, chats, messages, etc. The ChatboisClient in comparison is a viewport into the server.
+
+    The Server exposes a number of simple API's for adding users, chats, and messages, and controlling server-wide state (like locking).
+
+    The Server also exposes a websocket connection for the client to get immediate message updates from chats they are a part of.
+
+    Fields:
+        - max_users (int): The number beyond which no new users can register (w/out another user being deleted)
+        - autosave (bool): [Not Implemented Yet] The server will periodically (`self.frequency`) save state or not
+        - frequency (int): In minutes how frequently the server should autosave state
+        - app (FastAPI): The FastAPI that powers this whole d@mn thing
+        - users (dict[str, User]): The users that have been registered to the server
+        - active_users (dict[str, WebSocket]): Active websocket connections (username protected)
+        - chats (dict[str, Chat]): The chats that have been created in the server
+        - logger (Logger): Utility to console out info or warnings to the command line
+        - locked (bool): Whether the server is locked from receiveing new user registration or not (username protected)
+    """
     def __init__(self, max_users: int, autosave: bool, frequency: int | None):
         self.max_users = max_users
         self.autosave = autosave
@@ -38,12 +81,25 @@ class ChatboisServer:
         self.locked = False
 
     def run(self):
+        """
+        Exectution and hosting of the server. First Registers all routes and then runs via `uvicorn`
+        """
         self.routes()
         uvicorn.run(self.app, host="0.0.0.0", port=5000)
 
     def routes(self):
+        """
+        All ChatboisServer Routes are defined in the routes function (including the websocket)
+        """
         @self.app.get("/info")
         async def info(request: Request) -> JSONResponse:
+            """
+            Non-username protected info method to provide the HTTP and Websocket URLs for the Server.
+
+            Fails:
+                - If max_users already reached
+                - If server is locked
+            """
             if len(self.users) >= self.max_users or self.locked:
                 return JSONResponse(
                     status_code=status.HTTP_423_LOCKED,
@@ -60,6 +116,17 @@ class ChatboisServer:
 
         @self.app.post("/register/{username}")
         async def register(username: str) -> JSONResponse:
+            """
+            Registers a new user into the server
+
+            Arguments:
+                - username (str): The username the request is asking to register
+
+            Fails:
+                - If username already used
+                - If max_users already reached
+                - If server is locked
+            """
             self.logger.info(f"Attempting to Register User [{username}]")
             if len(self.users) == self.max_users or self.locked:
                 return JSONResponse(
@@ -82,13 +149,17 @@ class ChatboisServer:
 
         @self.app.websocket("/ws")
         async def connect_user(websocket: WebSocket) -> JSONResponse:
+            """
+            Creates a websocket connection with the requesting client, and stores socket in active_users
+
+            Fails:
+                - If username is unrecognized
+            """
             await websocket.accept()
             username = websocket.query_params.get("username", None)
             if username not in self.users:
-                return JSONResponse(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    content=f"User [{username}] Not Present in Server.",
-                )
+                await websocket.close(code=1008, reason=f'User [{username}] Not Found in Server')
+                return
 
             self.active_users[username] = websocket
             self.logger.info(f"Added User {username} to active users")
@@ -104,6 +175,13 @@ class ChatboisServer:
 
         @self.app.post("/make_chat/{chatname}")
         async def make_chat(chatname: str, users: list[str]) -> JSONResponse:
+            """
+            Creates a chat in the server for the given users
+
+            Fails:
+                - If chatname already exists
+                - If any user in users is unrecognized by server
+            """
             if chatname in self.chats:
                 return JSONResponse(
                     status_code=status.HTTP_406_NOT_ACCEPTABLE,
@@ -127,6 +205,13 @@ class ChatboisServer:
 
         @self.app.post("/send_message")
         async def send_message(message: Annotated[Message, Body()]) -> JSONResponse:
+            """
+            Accepts Message, writes it to its chat, and notifies active_users in that chat
+
+            Fails:
+                - if message.dest (Chat.name) not recognized by server
+                - if message.sender not present in message.dest (Chat.users)
+            """
             sender, destination = message.sender, message.dest
 
             if destination not in self.chats:
@@ -152,6 +237,9 @@ class ChatboisServer:
 
         @self.app.post("/lock_server")
         async def lock_server(username: str) -> JSONResponse:
+            """
+            Locks the server such that no new members can join
+            """
             if username not in self.users:
                 return JSONResponse(
                     status_code=status.HTTP_403_FORBIDDEN,
@@ -159,9 +247,14 @@ class ChatboisServer:
                 )
 
             self.locked = True
+            return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
+                                content='Server Locked')
 
         @self.app.post("/unlock_server")
         async def unlock_server(username: str) -> JSONResponse:
+            """
+            Unlocks the server such that new members can join
+            """
             if username not in self.users:
                 return JSONResponse(
                     status_code=status.HTTP_403_FORBIDDEN,
@@ -175,6 +268,9 @@ class ChatboisServer:
 
         @self.app.post("/increment_users")
         async def increment_server(username: str, increment: int) -> JSONResponse:
+            """
+            Increases `ChatboisServer.max_users` by `increment`
+            """
             if username not in self.users:
                 return JSONResponse(
                     status_code=status.HTTP_403_FORBIDDEN,
