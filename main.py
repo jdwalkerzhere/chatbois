@@ -1,7 +1,7 @@
 import asyncio
 from json import loads
 from os import listdir
-from pydantic import BaseModel, HttpUrl, WebsocketUrl
+from pydantic import UUID4, BaseModel, HttpUrl, WebsocketUrl
 import requests
 from rich.prompt import IntPrompt, Confirm, Prompt
 
@@ -37,7 +37,9 @@ class ClientServer(BaseModel):
         - HttpURL: the HTTP URL that the ChatboisServer you're connecting to is running at
         - WebsocketUrl: The Websocket URL that the ChatboisServer the user is connectiging to is running at
     """
+    name: str
     username: str
+    uuid: UUID4 | None
     HttpURL: HttpUrl
     WebsocketUrl: WebsocketUrl
 
@@ -88,10 +90,12 @@ def build_client_config() -> ClientConfig:
         if not server_to_add:
             break
 
+        name = Prompt.ask('What do you want to call this Server?')
         server_http_address = Prompt.ask("What Address is the Server Running at?")
         urls = requests.get(f"{server_http_address}/info").json()
         http_url, ws_url = urls["http_url"], urls["ws_url"]
         registered = Confirm.ask("Have you Registered with this Server Yet?")
+        uuid = None
         if registered:
             username = Prompt.ask("What is your username for this server?")
         else:
@@ -101,10 +105,11 @@ def build_client_config() -> ClientConfig:
                 )
                 sucessful_register = requests.post(f"{http_url}/register/{username}")
                 if sucessful_register.status_code == 202:
+                    uuid = sucessful_register.json()['token']
                     break
 
         servers.append(
-            ClientServer(username=username, HttpURL=http_url, WebsocketUrl=ws_url)
+            ClientServer(name=name, username=username, uuid=uuid, HttpURL=http_url, WebsocketUrl=ws_url)
         )
 
     return ClientConfig(servers=servers)
@@ -118,7 +123,7 @@ def start_client(client_config: ClientConfig) -> None:
     """
     print("Starting ChatboisClient")
     client = ChatboisClient(servers=client_config.servers)
-    asyncio.run(client.run())
+    client.run()
 
 
 def initialize_client() -> None:

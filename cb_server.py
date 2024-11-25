@@ -1,6 +1,6 @@
 from __future__ import annotations
 import logging
-from typing import Annotated
+from typing import Annotated, Optional
 from fastapi import Body, FastAPI, Request, WebSocket, status
 from fastapi.responses import JSONResponse
 from pydantic import UUID4, BaseModel
@@ -15,9 +15,11 @@ class User(BaseModel):
     Fields:
         - username (str): The name the server recognizes the user by
         - uuid (UUID4): [Currently Unneccessary] Useful down the line if users want to replace their username
+        - chats (list[str]): List of the chatnames the user is a part of (useful for get_chats method)
     """
     username: str
-    uuid: UUID4
+    uuid: str
+    chats: Optional[list[Chat]] = None
 
 
 class Message(BaseModel):
@@ -44,7 +46,7 @@ class Chat(BaseModel):
         - history (list[Message]): The message history of that chat among its users (No implicit copying of default list thanks to Pydantic BaseModel) 
     """
     name: str
-    users: set[str]
+    users: list[str]
     history: list[Message] = []
 
 
@@ -106,6 +108,7 @@ class ChatboisServer:
                     content="Server at User Capacity",
                 )
 
+            assert request is not None and request.client is not None
             host = request.client.host
             server_port = request.scope.get("server")[1]
             response = {
@@ -140,15 +143,17 @@ class ChatboisServer:
                     content=f"Username [{username}] Already Exists",
                 )
 
-            new_user = User(username=username, uuid=uuid4())
+            new_user = User(username=username, uuid=str(uuid4()))
+            self.logger.info(f'New User {username} created with token {new_user.uuid}')
             self.users[username] = new_user
+            response = {"username": username, "token": new_user.uuid}
             return JSONResponse(
                 status_code=status.HTTP_202_ACCEPTED,
-                content=f"New User [{username}] added with uuid: {new_user.uuid}",
+                content=response,
             )
 
         @self.app.websocket("/ws")
-        async def connect_user(websocket: WebSocket) -> JSONResponse:
+        async def connect_user(websocket: WebSocket) -> JSONResponse | None:
             """
             Creates a websocket connection with the requesting client, and stores socket in active_users
 
@@ -174,14 +179,19 @@ class ChatboisServer:
                 del self.active_users[username]
 
         @self.app.post("/make_chat/{chatname}")
-        async def make_chat(chatname: str, users: list[str]) -> JSONResponse:
+        async def make_chat(chatname: str, username: str, users: list[str]) -> JSONResponse:
             """
             Creates a chat in the server for the given users
 
             Fails:
+                - If username not present in chat
                 - If chatname already exists
                 - If any user in users is unrecognized by server
             """
+            if username not in users:
+                return JSONResponse(status_code=status.HTTP_406_NOT_ACCEPTABLE,
+                                    content='Cannot create chat for other users')
+
             if chatname in self.chats:
                 return JSONResponse(
                     status_code=status.HTTP_406_NOT_ACCEPTABLE,
@@ -195,9 +205,13 @@ class ChatboisServer:
                     content=f"Users [{invalid_users}] Not Present in Server, Cannot be Added to Chat",
                 )
 
-            chat_users = set([self.users[user].username for user in users])
-            new_chat = Chat(name=chatname, users=chat_users)
+            new_chat = Chat(name=chatname, users=users)
             self.chats[chatname] = new_chat
+
+            for user in new_chat.users:
+                if not self.users[user].chats:
+                    self.users[user].chats = []
+                self.users[user].chats.append(new_chat)
             return JSONResponse(
                 status_code=status.HTTP_202_ACCEPTED,
                 content=f"New Chat [{chatname}] added with users {users}",
@@ -229,7 +243,7 @@ class ChatboisServer:
             self.chats[destination].history.append(message)
             for user in self.chats[destination].users:
                 if user in self.active_users:
-                    await self.active_users[user].send_text(message.content)
+                    await self.active_users[user].send_json(message.__dict__)
             return JSONResponse(
                 status_code=status.HTTP_200_OK,
                 content=f"Message from {sender} Delivered to Chat [{destination}]",
@@ -282,3 +296,28 @@ class ChatboisServer:
                 status_code=status.HTTP_202_ACCEPTED,
                 content=f"Server Max Users Increased to {self.max_users}",
             )
+
+        @self.app.get("/get_chats/{username}/{token}")
+        async def get_chats(username: str, token: str) -> JSONResponse:
+            """
+            Sends a user (confirmed by their token) their chats
+            """
+            if username not in self.users:
+                return JSONResponse(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    content="Username not found in Server",
+                )
+
+            if self.users[username].uuid != token:
+                return JSONResponse(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    content="Token does not match username",
+                )
+
+            if not self.users[username].chats:
+                return JSONResponse(status_code=status.HTTP_404_NOT_FOUND,
+                                    content=f'User {username} has no chats to fetch')
+
+            json_chats = [chat.model_dump() for chat in self.users[username].chats]
+            return JSONResponse(status_code=status.HTTP_200_OK,
+                                content=json_chats)
