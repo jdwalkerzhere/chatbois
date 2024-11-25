@@ -4,6 +4,7 @@ from os import listdir
 from pydantic import UUID4, BaseModel, HttpUrl, WebsocketUrl
 import requests
 from rich.prompt import IntPrompt, Confirm, Prompt
+from rich import print
 
 import typer
 
@@ -41,7 +42,6 @@ class ClientServer(BaseModel):
     username: str
     uuid: UUID4 | None
     HttpURL: HttpUrl
-    WebsocketUrl: WebsocketUrl
 
 
 class ClientConfig(BaseModel):
@@ -59,7 +59,7 @@ def build_server_config() -> ServerConfig:
         - server_config (ServerConfig): Pydantic Model for the settings the chatboi's server will read from.
     """
     max_users = IntPrompt.ask(
-        "What is the maximum number of users this server will support?"
+        "What is the [bold red]maximum number[/bold red] of users this server will support?"
     )
     autosave = Confirm.ask(
         "Would you like this server to periodically save state? (Otherwise state is self-managed)"
@@ -93,7 +93,7 @@ def build_client_config() -> ClientConfig:
         name = Prompt.ask('What do you want to call this Server?')
         server_http_address = Prompt.ask("What Address is the Server Running at?")
         urls = requests.get(f"{server_http_address}/info").json()
-        http_url, ws_url = urls["http_url"], urls["ws_url"]
+        http_url = urls["http_url"]
         registered = Confirm.ask("Have you Registered with this Server Yet?")
         uuid = None
         if registered:
@@ -109,7 +109,7 @@ def build_client_config() -> ClientConfig:
                     break
 
         servers.append(
-            ClientServer(name=name, username=username, uuid=uuid, HttpURL=http_url, WebsocketUrl=ws_url)
+            ClientServer(name=name, username=username, uuid=uuid, HttpURL=http_url)
         )
 
     return ClientConfig(servers=servers)
@@ -121,7 +121,7 @@ def start_client(client_config: ClientConfig) -> None:
 
     Reads from the `client_config` and establishes connections with all the live servers available
     """
-    print("Starting ChatboisClient")
+    print("[bold green underline]Starting ChatboisClient")
     client = ChatboisClient(servers=client_config.servers)
     client.run()
 
@@ -132,9 +132,9 @@ def initialize_client() -> None:
 
     Eventually makes call to `start_client()` after the necessary configuration details have been gathered.
     """
-    print("Initializing chatbois Client")
+    print("[bold green]Initializing chatbois Client")
     if "client_config.json" not in listdir():
-        print("No client config found, please configure.")
+        print("[red]No client config found, please configure.")
         client_config = build_client_config()
         with open("client_config.json", "w+") as new_client_config:
             new_client_config.write(client_config.model_dump_json())
@@ -177,9 +177,9 @@ def initialize_server(server: bool = False):
         initialize_client()
         return
 
-    print("Initializing chatbois Server")
+    print("[bold green]Initializing chatbois Server")
     if "server_config.json" not in listdir():
-        print("No server config file found, please configure.")
+        print("[red]No server config file found, please configure.")
         server_config = build_server_config()
         with open("server_config.json", "w+") as new_server_config:
             new_server_config.write(server_config.model_dump_json())

@@ -1,11 +1,9 @@
-import asyncio
 from enum import Enum
 import os
-from pydantic import UUID4, BaseModel, HttpUrl, WebsocketUrl
+from pydantic import BaseModel, HttpUrl
 from rich.prompt import Confirm, IntPrompt, Prompt
+from rich import print
 import requests
-from websockets import connect, ConnectionClosedError
-from websockets.asyncio.client import ClientConnection
 
 
 def clear_terminal():
@@ -37,7 +35,7 @@ class Chat(BaseModel):
         - history (list[Message]): The message history of that chat among its users (No implicit copying of default list thanks to Pydantic BaseModel) 
     """
     name: str
-    users: set[str]
+    users: list[str]
     history: list[Message] = []
 
 
@@ -56,7 +54,6 @@ class ClientServer(BaseModel):
     username: str
     uuid: str | None
     HttpURL: HttpUrl
-    WebsocketUrl: WebsocketUrl
 
 
 class ClientLayer(Enum):
@@ -100,20 +97,8 @@ class ChatboisClient:
     """
     def __init__(self, servers: list[ClientServer]):
         self.servers: dict[str, ClientServer] = {server.name: server for server in servers}
-        self.connection: ClientConnection | None = None
         self.layer = ClientLayer.SERVER
         self.chats:  dict[str, Chat] | None = None
-
-    async def connect(self, server: ClientServer):
-        async with connect(
-            f"{server.WebsocketUrl}?username={server.username}"
-        ) as websocket:
-            try:
-                while True:
-                    self.connection = websocket
-                    return
-            except ConnectionClosedError as e:
-                print(f"Connection closed: {e}")
 
     def nav_levels(self):
         match self.layer:
@@ -131,7 +116,6 @@ class ChatboisClient:
             server = self.register_new_server()
         assert not isinstance(server, str)
         self.current_server = server
-        asyncio.run(self.connect(server))
         self.layer = ClientLayer.CHAT
         return
 
@@ -139,8 +123,8 @@ class ChatboisClient:
         choices = {i: server_name for i, server_name in enumerate(self.servers.keys(), start=1)}
         choices.update({len(choices)+1: 'Join New Server'})
         for i, choice in choices.items():
-            print(f'{i}) {choice}')
-        selection = choices[IntPrompt.ask('Which server do you want?')]
+            print(f'[bold green]{i})[/bold green] {choice}')
+        selection = choices[IntPrompt.ask('[bold italic]Which server do you want?')]
         if selection not in self.servers:
             return selection
         return self.servers[selection]
@@ -154,7 +138,7 @@ class ChatboisClient:
         name = Prompt.ask('What do you want to call this server?')
         server_http_address = Prompt.ask('What address is the server running at?')
         urls = requests.get(f"{server_http_address}/info").json()
-        http_url, ws_url = urls["http_url"], urls["ws_url"]
+        http_url = urls["http_url"]
         registered = Confirm.ask("Have you Registered with this Server Yet?")
         uuid = None
         if registered:
@@ -169,30 +153,98 @@ class ChatboisClient:
                     uuid = sucessful_register.json()['token']
                     break
 
-        new_server = ClientServer(name=name, username=username, uuid=uuid, HttpURL=http_url, WebsocketUrl=ws_url)
+        new_server = ClientServer(name=name, username=username, uuid=uuid, HttpURL=http_url)
         self.servers.update({new_server.name: new_server})
         return new_server
 
     def nav_chat(self):
         clear_terminal()
         self.chats = self.get_chats()  # Request Chat History from Server / Store as field
-        print(self.chats)
-        TEMP = Confirm.ask('Go Out to Servers')
-        if TEMP:
-            self.layer = ClientLayer.SERVER
-            return
-        raise NotImplementedError
+        selection = self.select_chat()
+        match selection:
+            case 'Make new Chat':
+                self.make_chat()
+                return
+            case 'Navigate Servers':
+                self.layer = ClientLayer.SERVER
+                return
+            case _:
+                self.current_chat = self.chats[selection]
+                self.layer = ClientLayer.MESSAGE
+                return
+
+    def select_chat(self) -> str:
+        assert self.chats is not None
+        choices = {i: chat_name for i, chat_name in enumerate(self.chats.keys(), start=1)}
+        choices.update({len(choices)+1: 'Make new Chat'})
+        choices.update({len(choices)+1: 'Navigate Servers'})
+        for i, choice in choices.items():
+            print(f'[bold green]{i})[/bold green] {choice}')
+        selection = choices[IntPrompt.ask('[bold italic]Which action do you want?')]
+        return selection
+
+    def make_chat(self):
+        clear_terminal()
+        while True:
+            url = f'{self.current_server.HttpURL}/make_chat/'
+            chatname = Prompt.ask('[bold italic]What do you want to call this Chat?')
+            username = self.current_server.username
+            members = []
+            while True:
+                add_member = Confirm.ask(f'[bold]Add member to [italic]{chatname}[/italic] Chat?')
+                if not add_member:
+                    break
+                # TODO: Make this more user friendly, handle non-existing users
+                members.append(Prompt.ask(f'[bold italic]Who do you want to add?'))
+            response = requests.post(f'{url}{username}/{chatname}', json=members)
+            if response.status_code == 202:
+                break
+            print(f'Error creating chat {chatname}: {response.json()}')
+
+        return
 
     def get_chats(self) -> dict[str, Chat]:
-        # TODO: IMPLEMENT ON SERVER-SIDE
         url = f'{self.current_server.HttpURL}/get_chats/'
         query = f'{self.current_server.username}/{self.current_server.uuid}'
         chats = requests.get(f'{url}{query}').json()
+        if chats == f'User {self.current_server.username} has no chats to fetch':
+            return {}
         return {chat['name']: Chat(**chat) for chat in chats}
 
     def nav_message(self):
         clear_terminal()
-        pass
+        self.current_chat = self.get_chats()[self.current_chat.name]
+        for message in self.current_chat.history:
+            if message.sender == self.current_server.username:
+                print(f'[bold dim]{message.sender}[/bold dim]: {message.content}')
+            else:
+                print(f'[bold blue]{message.sender}[/bold blue]: {message.content}')
+
+        choices = {"1": 'Send Message',
+                   "2": 'Update',
+                   "3": 'Nav Out to Chats'}
+        for i, choice in choices.items():
+            print(f'[bold red]{i}) {choice}')
+        choice = Prompt.ask('[bold italic]Which Action')
+        match choices[choice]:
+            case 'Nav Out to Chats':
+                self.layer = ClientLayer.CHAT
+                return
+            case 'Update':
+                self.current_chat = self.get_chats()[self.current_chat.name]
+                return
+            case 'Send Message':
+                self.send_message(Prompt.ask('Your Message'))
+                return
+
+    def send_message(self, content: str):
+        message = Message(sender=self.current_server.username,
+                          dest=self.current_chat.name,
+                          content=content)
+
+        requests.post(f'{self.current_server.HttpURL}/send_message', json=message.model_dump())
+        self.current_chat = self.get_chats()[self.current_chat.name]
+
 
     def run(self):
         clear_terminal()
