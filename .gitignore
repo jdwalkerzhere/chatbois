@@ -3,3 +3,5 @@ __pycache__/
 Design.md
 client_config.json
 server_config.json
+chats.json
+users.json

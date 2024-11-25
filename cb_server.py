@@ -1,10 +1,14 @@
 from __future__ import annotations
-import asyncio
+import json
 import logging
 from typing import Annotated, Optional
 from fastapi import Body, FastAPI, Request, status
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
+from os import listdir
 from pydantic import BaseModel
+from rich import print
+import time
+from threading import Thread
 from uuid import uuid4
 import uvicorn
 
@@ -18,9 +22,10 @@ class User(BaseModel):
         - uuid (UUID4): [Currently Unneccessary] Useful down the line if users want to replace their username
         - chats (list[str]): List of the chatnames the user is a part of (useful for get_chats method)
     """
+
     username: str
     uuid: str
-    chats: Optional[list[Chat]] = None
+    chats: Optional[list[str]] = None
 
 
 class Message(BaseModel):
@@ -30,8 +35,9 @@ class Message(BaseModel):
     Fields:
         - sender (str): The user that sent the message to the server
         - dest (str): The name of the *Chat* that the message was sent to
-        - content(str): The actual message content 
+        - content(str): The actual message content
     """
+
     sender: str
     dest: str
     content: str
@@ -44,8 +50,9 @@ class Chat(BaseModel):
     Fields:
         - name (str): The name the server recognizes the chat by
         - users (set[str]): The users that are able to access this chat instance
-        - history (list[Message]): The message history of that chat among its users (No implicit copying of default list thanks to Pydantic BaseModel) 
+        - history (list[Message]): The message history of that chat among its users (No implicit copying of default list thanks to Pydantic BaseModel)
     """
+
     name: str
     users: list[str]
     history: list[Message] = []
@@ -63,8 +70,7 @@ class ChatboisServer:
 
     Fields:
         - max_users (int): The number beyond which no new users can register (w/out another user being deleted)
-        - autosave (bool): [Not Implemented Yet] The server will periodically (`self.frequency`) save state or not
-        - frequency (int): In minutes how frequently the server should autosave state
+        - frequency (int): In increments of 15 seconds, how frequently the server should autosave state
         - app (FastAPI): The FastAPI that powers this whole d@mn thing
         - users (dict[str, User]): The users that have been registered to the server
         - active_users (dict[str, WebSocket]): Active websocket connections (username protected)
@@ -72,13 +78,12 @@ class ChatboisServer:
         - logger (Logger): Utility to console out info or warnings to the command line
         - locked (bool): Whether the server is locked from receiveing new user registration or not (username protected)
     """
-    def __init__(self, max_users: int, autosave: bool, frequency: int | None):
+
+    def __init__(self, max_users: int, frequency: int):
         self.max_users = max_users
-        self.autosave = autosave
         self.frequency = frequency
         self.app = FastAPI()
         self.users: dict[str, User] = {}
-        self.active_users: dict[str, asyncio.Queue] = {}
         self.chats: dict[str, Chat] = {}
         self.logger = logging.getLogger(name="uvicorn")
         self.locked = False
@@ -87,13 +92,54 @@ class ChatboisServer:
         """
         Exectution and hosting of the server. First Registers all routes and then runs via `uvicorn`
         """
+        if "chats.json" in listdir():
+            with open("chats.json", "r") as chats_file:
+                print("[bold green]Reading Chats from saved server")
+                chats = json.load(chats_file)
+                self.chats = {
+                    chatname: Chat(**chatdata) for chatname, chatdata in chats.items()
+                    }
+
+        if "users.json" in listdir():
+            with open("users.json", "r") as user_file:
+                print("[bold green]Reading Users from saved server")
+                users = json.load(user_file)
+                self.users = {
+                    username: User(**userdata) for username, userdata in users.items()
+                    }
+
+        save_thread = Thread(target=self.periodic_save, daemon=True)
+        save_thread.start()
+
         self.routes()
         uvicorn.run(self.app, host="0.0.0.0", port=5000)
+
+    def save_server(self):
+        print("[bold green italic]SAVING SERVER")
+        with open("users.json", "w") as user_file:
+            json.dump(
+                {username: user.model_dump(mode='json') for username, user in self.users.items()},
+                user_file,
+                indent=4,
+            )
+
+        with open("chats.json", "w") as chats_file:
+            json.dump(
+                {chatname: chat.model_dump(mode='json') for chatname, chat in self.chats.items()},
+                chats_file,
+                indent=4,
+            )
+
+    def periodic_save(self):
+        while True:
+            time.sleep(self.frequency * 15)
+            self.save_server()
 
     def routes(self):
         """
         All ChatboisServer Routes are defined in the routes function (including the websocket)
         """
+
         @self.app.get("/info")
         async def info(request: Request) -> JSONResponse:
             """
@@ -144,7 +190,7 @@ class ChatboisServer:
                 )
 
             new_user = User(username=username, uuid=str(uuid4()))
-            self.logger.info(f'New User {username} created with token {new_user.uuid}')
+            self.logger.info(f"New User {username} created with token {new_user.uuid}")
             self.users[username] = new_user
             response = {"username": username, "token": new_user.uuid}
             return JSONResponse(
@@ -152,9 +198,10 @@ class ChatboisServer:
                 content=response,
             )
 
-
         @self.app.post("/make_chat/{username}/{chatname}")
-        async def make_chat(chatname: str, username: str, users: list[str]) -> JSONResponse:
+        async def make_chat(
+            chatname: str, username: str, users: list[str]
+        ) -> JSONResponse:
             """
             Creates a chat in the server for the given users
 
@@ -164,12 +211,14 @@ class ChatboisServer:
                 - If any user in users is unrecognized by server
             """
             if username not in users:
-                self.logger.info(f'Username {username} not found')
-                return JSONResponse(status_code=status.HTTP_406_NOT_ACCEPTABLE,
-                                    content='Cannot create chat for other users')
+                self.logger.info(f"Username {username} not found")
+                return JSONResponse(
+                    status_code=status.HTTP_406_NOT_ACCEPTABLE,
+                    content="Cannot create chat for other users",
+                )
 
             if chatname in self.chats:
-                self.logger.info(f'Chatname {chatname} already exists')
+                self.logger.info(f"Chatname {chatname} already exists")
                 return JSONResponse(
                     status_code=status.HTTP_406_NOT_ACCEPTABLE,
                     content=f"Chat [{chatname}] Already Exists",
@@ -177,7 +226,7 @@ class ChatboisServer:
 
             invalid_users = [user for user in users if user not in self.users]
             if invalid_users:
-                self.logger.info(f'Some invalid users: {invalid_users}')
+                self.logger.info(f"Some invalid users: {invalid_users}")
                 return JSONResponse(
                     status_code=status.HTTP_406_NOT_ACCEPTABLE,
                     content=f"Users [{invalid_users}] Not Present in Server, Cannot be Added to Chat",
@@ -189,7 +238,7 @@ class ChatboisServer:
             for user in new_chat.users:
                 if not self.users[user].chats:
                     self.users[user].chats = []
-                self.users[user].chats.append(new_chat)
+                self.users[user].chats.append(new_chat.name)
             return JSONResponse(
                 status_code=status.HTTP_202_ACCEPTED,
                 content=f"New Chat [{chatname}] added with users {users}",
@@ -236,8 +285,9 @@ class ChatboisServer:
                 )
 
             self.locked = True
-            return JSONResponse(status_code=status.HTTP_202_ACCEPTED,
-                                content='Server Locked')
+            return JSONResponse(
+                status_code=status.HTTP_202_ACCEPTED, content="Server Locked"
+            )
 
         @self.app.post("/unlock_server")
         async def unlock_server(username: str) -> JSONResponse:
@@ -290,9 +340,10 @@ class ChatboisServer:
                 )
 
             if not self.users[username].chats:
-                return JSONResponse(status_code=status.HTTP_200_OK,
-                                    content=f'User {username} has no chats to fetch')
+                return JSONResponse(
+                    status_code=status.HTTP_200_OK,
+                    content=f"User {username} has no chats to fetch",
+                )
 
-            json_chats = [chat.model_dump() for chat in self.users[username].chats]
-            return JSONResponse(status_code=status.HTTP_200_OK,
-                                content=json_chats)
+            json_chats = [self.chats[chat].model_dump() for chat in self.users[username].chats]
+            return JSONResponse(status_code=status.HTTP_200_OK, content=json_chats)

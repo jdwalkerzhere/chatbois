@@ -1,9 +1,9 @@
 # chatbois
-chatbois is an *extremely* simple chat service built on top of [FastAPI](https://fastapi.tiangolo.com/), [Typer](https://typer.tiangolo.com/) (so I really owe [Sebastian](https://x.com/tiangolo) a beer), and [Textual](https://github.com/Textualize/textual).
+chatbois is an *extremely* simple chat service built on top of [FastAPI](https://fastapi.tiangolo.com/), [Typer](https://typer.tiangolo.com/) (so I really owe [Sebastian](https://x.com/tiangolo) a beer), and [Rich](https://rich.readthedocs.io/en/latest/introduction.html).
 
-chatbois is currently only intended to work on MacOS (though I suspect it would also work correctly on Linux [sorry Windows]).
+chatbois is currently only tested on MacOS (though I suspect it would also work correctly on Linux [Windows folk, proceed at your own risk]).
 
-Architecturally, the server is ***heavy*** in that it is the SOT (Source of Truth) for all state, and the client is merely a renderer of that state for the user. The security is... minimal at best... in that each user has a UUID assigned to them by the server, which is used for subsequent connections over time. This would not be hard to beef up if you wanted to.
+Architecturally, the server is ***heavy*** in that it is the SOT (Source of Truth) for all state, and the client is merely a renderer of that state for the user. The security is... minimal at best... in that each user has a UUID assigned to them by the server, which is used for validating what user is accessing what chats and messages, etc. This would not be hard to beef up if you wanted to.
 
 Here's a screaming detail that anyone will notice. There's no DB. Why? Because I only know file I/O and not the faintest about databases. This also should be relatively easy to upgrade in your own version of the project if you would like.
 
