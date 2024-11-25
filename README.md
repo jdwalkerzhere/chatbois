@@ -10,12 +10,16 @@ Here's a screaming detail that anyone will notice. There's no DB. Why? Because I
 ### Current Scope
 - Stand up a central server (via `./chatbois --server`) either new or restarting an existing server
 - Register and connect clients (via `./chatbois`) over a FastAPI WebSocket
-- Other user discoverability
 - Chat creation/management
 - Sending/Receiving Messages
-- Killing the Server
 
 ### Future Features
+- The Client is still missing a lot of handles over the server
+- There's likely a usecase for adding a `perms` Enum to the `User` class so only particular kinds of users can initialize certain actions (like Locking/Unlocking the server)
+- Friendlier UI: There's some clunkiness, and integrating `keyboard` in would likely make the UX a lot better
+- Database persistence rather than periodic saving to files
+- A `user_trie` data structure on the server to give a nice autocompletion-style interaction when adding users to a chat
+- General clean-up: Adding more docstrings and trimming memory fat on both the server and client side
 - Server Migration (in the case that your server has been compromised in some way)
 - ASCII Art representations of Images/GIFs/Videos/etc.
 - Peer to Peer Messaging where the Central server is merely an address bookkeeper
@@ -27,6 +31,6 @@ All in all, at this early stage, chatbois is basically a toy project, but could 
 2. Create a virtual environment with your tool of choice (example: `python3 -m venv venv`)
 3. Install all dependencies via `pip install -r requirements.txt`
 4. Add executible privaleges to the project `chmod +x chatbois`
-5. Instantiate your server with `chatbois --server`
-6. Instantiate your client with `chatbois` or with `chatbois --connect=<server-ip>`
+5. Instantiate your server with `./chatbois.py --server`
+6. Instantiate your client with `./chatbois.py`
 7. Invite your bois and chat
