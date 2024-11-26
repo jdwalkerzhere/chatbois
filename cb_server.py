@@ -7,8 +7,6 @@ from fastapi.responses import JSONResponse
 from os import listdir
 from pydantic import BaseModel
 from rich import print
-import time
-from threading import Thread
 from uuid import uuid4
 import uvicorn
 
@@ -81,7 +79,6 @@ class ChatboisServer:
 
     def __init__(self, max_users: int, frequency: int):
         self.max_users = max_users
-        self.frequency = frequency
         self.app = FastAPI()
         self.users: dict[str, User] = {}
         self.chats: dict[str, Chat] = {}
@@ -108,9 +105,6 @@ class ChatboisServer:
                     username: User(**userdata) for username, userdata in users.items()
                     }
 
-        save_thread = Thread(target=self.periodic_save, daemon=True)
-        save_thread.start()
-
         self.routes()
         uvicorn.run(self.app, host="0.0.0.0", port=5000)
 
@@ -129,11 +123,6 @@ class ChatboisServer:
                 chats_file,
                 indent=4,
             )
-
-    def periodic_save(self):
-        while True:
-            time.sleep(self.frequency * 15)
-            self.save_server()
 
     def routes(self):
         """
@@ -193,6 +182,7 @@ class ChatboisServer:
             self.logger.info(f"New User {username} created with token {new_user.uuid}")
             self.users[username] = new_user
             response = {"username": username, "token": new_user.uuid}
+            self.save_server()
             return JSONResponse(
                 status_code=status.HTTP_202_ACCEPTED,
                 content=response,
@@ -239,6 +229,7 @@ class ChatboisServer:
                 if not self.users[user].chats:
                     self.users[user].chats = []
                 self.users[user].chats.append(new_chat.name)
+            self.save_server()
             return JSONResponse(
                 status_code=status.HTTP_202_ACCEPTED,
                 content=f"New Chat [{chatname}] added with users {users}",
@@ -268,6 +259,7 @@ class ChatboisServer:
                 )
 
             self.chats[destination].history.append(message)
+            self.save_server()
             return JSONResponse(
                 status_code=status.HTTP_200_OK,
                 content=f"Message from {sender} Delivered to Chat [{destination}]",
