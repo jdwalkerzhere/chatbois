@@ -42,7 +42,7 @@ class ClientServer(BaseModel):
     name: str
     username: str
     uuid: UUID4 | None
-    HttpURL: HttpUrl
+    HttpURL: str 
 
 
 class ClientConfig(BaseModel):
@@ -87,8 +87,7 @@ def build_client_config() -> ClientConfig:
 
         name = Prompt.ask("What do you want to call this Server?")
         server_http_address = Prompt.ask("What Address is the Server Running at?")
-        urls = requests.get(f"{server_http_address}/info").json()
-        http_url = urls["http_url"]
+        server_http_address = f'https://{server_http_address}'
         registered = Confirm.ask("Have you Registered with this Server Yet?")
         uuid = None
         if registered:
@@ -98,13 +97,13 @@ def build_client_config() -> ClientConfig:
                 username = Prompt.ask(
                     "What do you want your username to be for this Server?"
                 )
-                sucessful_register = requests.post(f"{http_url}/register/{username}")
+                sucessful_register = requests.post(f"{server_http_address}/register/{username}")
                 if sucessful_register.status_code == 202:
                     uuid = sucessful_register.json()["token"]
                     break
 
         servers.append(
-            ClientServer(name=name, username=username, uuid=uuid, HttpURL=http_url)
+            ClientServer(name=name, username=username, uuid=uuid, HttpURL=server_http_address)
         )
 
     return ClientConfig(servers=servers)

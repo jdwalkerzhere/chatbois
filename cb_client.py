@@ -1,6 +1,6 @@
 from enum import Enum
 import os
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel
 from rich.prompt import Confirm, IntPrompt, Prompt
 from rich import print
 import requests
@@ -56,7 +56,7 @@ class ClientServer(BaseModel):
     name: str
     username: str
     uuid: str | None
-    HttpURL: HttpUrl
+    HttpURL: str
 
 
 class ClientLayer(Enum):
@@ -145,9 +145,8 @@ class ChatboisClient:
             print(f"Connecting to known server: {known_server.name}")
             return known_server
         name = Prompt.ask("What do you want to call this server?")
-        server_http_address = Prompt.ask("What address is the server running at?")
-        urls = requests.get(f"{server_http_address}/info").json()
-        http_url = urls["http_url"]
+        server_http_address = Prompt.ask("What address is the server running at? (include whether http or https)")
+        server_http_address = f'{server_http_address}'
         registered = Confirm.ask("Have you Registered with this Server Yet?")
         uuid = None
         if registered:
@@ -157,13 +156,13 @@ class ChatboisClient:
                 username = Prompt.ask(
                     "What do you want your username to be for this Server?"
                 )
-                sucessful_register = requests.post(f"{http_url}/register/{username}")
+                sucessful_register = requests.post(f"{server_http_address}/register/{username}")
                 if sucessful_register.status_code == 202:
                     uuid = sucessful_register.json()["token"]
                     break
 
         new_server = ClientServer(
-            name=name, username=username, uuid=uuid, HttpURL=http_url
+            name=name, username=username, uuid=uuid, HttpURL=server_http_address
         )
         self.servers.update({new_server.name: new_server})
         return new_server
