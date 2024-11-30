@@ -165,6 +165,7 @@ class ChatboisClient:
             name=name, username=username, uuid=uuid, HttpURL=server_http_address
         )
         self.servers.update({new_server.name: new_server})
+        # TODO: Add saving logic to 'client_config.json'
         return new_server
 
     def nav_chat(self):
@@ -230,8 +231,8 @@ class ChatboisClient:
         return {chat["name"]: Chat(**chat) for chat in chats}
 
     def nav_message(self):
-        clear_terminal()
         self.current_chat = self.get_chats()[self.current_chat.name]
+        clear_terminal()
         for message in self.current_chat.history:
             if message.sender == self.current_server.username:
                 print(f"[bold dim]{message.sender}[/bold dim]: {message.content}")
