@@ -30,7 +30,8 @@ All in all, at this early stage, chatbois is basically a toy project, but could 
 1. Clone the repo on the server machine (can be the same as a client machine)
 2. Create a virtual environment with your tool of choice (example: `python3 -m venv venv`)
 3. Install all dependencies via `pip install -r requirements.txt`
-4. Add executible privaleges to the project `chmod +x chatbois`
-5. Instantiate your server with `./chatbois.py --server`
-6. Instantiate your client with `./chatbois.py`
-7. Invite your bois and chat
+4. Activate your virtual environment `source venv/bin/activate`
+5. Add executible privaleges to the project `chmod +x chatbois`
+6. Instantiate your server with `./chatbois.py --server`
+7. Instantiate your client with `./chatbois.py`
+8. Invite your bois and chat
