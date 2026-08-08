@@ -5,6 +5,8 @@ from rich.prompt import Confirm, IntPrompt, Prompt
 from rich import print
 import requests
 
+from cb_db import save
+
 
 def clear_terminal():
     command = "clr" if os.name == "nt" else "clear"
@@ -165,6 +167,17 @@ class ChatboisClient:
             name=name, username=username, uuid=uuid, HttpURL=server_http_address
         )
         self.servers.update({new_server.name: new_server})
+<<<<<<< HEAD
+=======
+        save(
+            "client_config",
+            {
+                "servers": [
+                    server.model_dump(mode="json") for server in self.servers.values()
+                ]
+            },
+        )
+>>>>>>> 1a8c374 (added instructions for uv and added sqlite persistence)
         return new_server
 
     def nav_chat(self):

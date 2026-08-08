@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 
 import asyncio
-from json import loads
-from os import listdir
 from pydantic import UUID4, BaseModel, HttpUrl, WebsocketUrl
 import requests
 from rich.prompt import IntPrompt, Confirm, Prompt
@@ -10,6 +8,7 @@ from rich import print
 
 import typer
 
+from cb_db import load, save
 from cb_server import ChatboisServer
 from cb_client import ChatboisClient
 
@@ -122,22 +121,17 @@ def start_client(client_config: ClientConfig) -> None:
 
 def initialize_client() -> None:
     """
-    Attempts to read from `client_config.json` and runs `build_client_config()` if it is not present.
-
-    Eventually makes call to `start_client()` after the necessary configuration details have been gathered.
+    Loads the client configuration from SQLite and builds it when absent.
     """
     print("[bold green]Initializing chatbois Client")
-    if "client_config.json" not in listdir():
+    client_options = load("client_config", None)
+    if client_options is None:
         print("[red]No client config found, please configure.")
         client_config = build_client_config()
-        with open("client_config.json", "w+") as new_client_config:
-            new_client_config.write(client_config.model_dump_json())
-            new_client_config.close()
+        client_options = client_config.model_dump(mode="json")
+        save("client_config", client_options)
 
-    with open("client_config.json", "r") as client_options:
-        client_options = loads(client_options.read())
-        client_config = ClientConfig(**client_options)
-
+    client_config = ClientConfig(**client_options)
     print("loading client config")
     start_client(client_config)
 
@@ -171,17 +165,14 @@ def initialize_server(server: bool = False):
         return
 
     print("[bold green]Initializing chatbois Server")
-    if "server_config.json" not in listdir():
-        print("[red]No server config file found, please configure.")
+    server_options = load("server_config", None)
+    if server_options is None:
+        print("[red]No server config found, please configure.")
         server_config = build_server_config()
-        with open("server_config.json", "w+") as new_server_config:
-            new_server_config.write(server_config.model_dump_json())
-            new_server_config.close()
+        server_options = server_config.model_dump(mode="json")
+        save("server_config", server_options)
 
-    with open("server_config.json", "r") as server_options:
-        server_options = loads(server_options.read())
-        server_config = ServerConfig(**server_options)
-
+    server_config = ServerConfig(**server_options)
     print("Starting chatbois Server")
     start_server(server_config)
 

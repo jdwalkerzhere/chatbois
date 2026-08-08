@@ -1,14 +1,14 @@
 from __future__ import annotations
-import json
 import logging
 from typing import Annotated, Optional
 from fastapi import Body, FastAPI, Request, status
 from fastapi.responses import JSONResponse
-from os import listdir
 from pydantic import BaseModel
 from rich import print
 from uuid import uuid4
 import uvicorn
+
+from cb_db import load, save
 
 
 class User(BaseModel):
@@ -89,40 +89,34 @@ class ChatboisServer:
         """
         Exectution and hosting of the server. First Registers all routes and then runs via `uvicorn`
         """
-        if "chats.json" in listdir():
-            with open("chats.json", "r") as chats_file:
-                print("[bold green]Reading Chats from saved server")
-                chats = json.load(chats_file)
-                self.chats = {
-                    chatname: Chat(**chatdata) for chatname, chatdata in chats.items()
-                    }
-
-        if "users.json" in listdir():
-            with open("users.json", "r") as user_file:
-                print("[bold green]Reading Users from saved server")
-                users = json.load(user_file)
-                self.users = {
-                    username: User(**userdata) for username, userdata in users.items()
-                    }
+        users = load("users", {})
+        chats = load("chats", {})
+        self.users = {
+            username: User(**userdata) for username, userdata in users.items()
+        }
+        self.chats = {
+            chatname: Chat(**chatdata) for chatname, chatdata in chats.items()
+        }
 
         self.routes()
         uvicorn.run(self.app, host="0.0.0.0", port=5000)
 
     def save_server(self):
         print("[bold green italic]SAVING SERVER")
-        with open("users.json", "w") as user_file:
-            json.dump(
-                {username: user.model_dump(mode='json') for username, user in self.users.items()},
-                user_file,
-                indent=4,
-            )
-
-        with open("chats.json", "w") as chats_file:
-            json.dump(
-                {chatname: chat.model_dump(mode='json') for chatname, chat in self.chats.items()},
-                chats_file,
-                indent=4,
-            )
+        save(
+            "users",
+            {
+                username: user.model_dump(mode="json")
+                for username, user in self.users.items()
+            },
+        )
+        save(
+            "chats",
+            {
+                chatname: chat.model_dump(mode="json")
+                for chatname, chat in self.chats.items()
+            },
+        )
 
     def routes(self):
         """
