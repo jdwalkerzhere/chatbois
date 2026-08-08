@@ -26,16 +26,6 @@ Server state and local configuration are persisted in `chatbois.db` using SQLite
 All in all, at this early stage, chatbois is basically a toy project, but could be very fun to add to over time.
 
 ## Installation
-<<<<<<< HEAD
-1. Clone the repo on the server machine (can be the same as a client machine)
-2. Create a virtual environment with your tool of choice (example: `python3 -m venv venv`)
-3. Install all dependencies via `pip install -r requirements.txt`
-4. Activate your virtual environment `source venv/bin/activate`
-5. Add executible privaleges to the project `chmod +x chatbois`
-6. Instantiate your server with `./chatbois.py --server`
-7. Instantiate your client with `./chatbois.py`
-8. Invite your bois and chat
-=======
 1. Clone the repo on the server machine (which can also be a client machine).
 2. Choose how to create the environment and install dependencies:
    - **uv:** Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then run `uv venv && uv pip install -r requirements.txt`.
@@ -44,4 +34,3 @@ All in all, at this early stage, chatbois is basically a toy project, but could 
 4. Start the server with `uv run ./chatbois.py --server` when using uv, or `./chatbois.py --server` from the activated pip environment.
 5. Start each client with `uv run ./chatbois.py` when using uv, or `./chatbois.py` from the activated pip environment.
 6. Invite your bois and chat.
->>>>>>> 1a8c374 (added instructions for uv and added sqlite persistence)

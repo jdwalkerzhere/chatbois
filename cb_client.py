@@ -167,8 +167,6 @@ class ChatboisClient:
             name=name, username=username, uuid=uuid, HttpURL=server_http_address
         )
         self.servers.update({new_server.name: new_server})
-<<<<<<< HEAD
-=======
         save(
             "client_config",
             {
@@ -177,7 +175,6 @@ class ChatboisClient:
                 ]
             },
         )
->>>>>>> 1a8c374 (added instructions for uv and added sqlite persistence)
         return new_server
 
     def nav_chat(self):
