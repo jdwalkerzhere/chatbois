@@ -160,15 +160,21 @@ class ChatboisServer:
                 - If server is locked
             """
             self.logger.info(f"Attempting to Register User [{username}]")
-            if len(self.users) == self.max_users or self.locked:
+            if len(self.users) >= self.max_users:
                 return JSONResponse(
-                    status_code=status.HTTP_406_NOT_ACCEPTABLE,
+                    status_code=status.HTTP_409_CONFLICT,
                     content="Server at User Capacity",
+                )
+
+            if self.locked:
+                return JSONResponse(
+                    status_code=status.HTTP_423_LOCKED,
+                    content="Server is Locked",
                 )
 
             if username in self.users:
                 return JSONResponse(
-                    status_code=status.HTTP_406_NOT_ACCEPTABLE,
+                    status_code=status.HTTP_409_CONFLICT,
                     content=f"Username [{username}] Already Exists",
                 )
 
@@ -178,7 +184,7 @@ class ChatboisServer:
             response = {"username": username, "token": new_user.uuid}
             self.save_server()
             return JSONResponse(
-                status_code=status.HTTP_202_ACCEPTED,
+                status_code=status.HTTP_201_CREATED,
                 content=response,
             )
 
@@ -197,14 +203,14 @@ class ChatboisServer:
             if username not in users:
                 self.logger.info(f"Username {username} not found")
                 return JSONResponse(
-                    status_code=status.HTTP_406_NOT_ACCEPTABLE,
+                    status_code=status.HTTP_403_FORBIDDEN,
                     content="Cannot create chat for other users",
                 )
 
             if chatname in self.chats:
                 self.logger.info(f"Chatname {chatname} already exists")
                 return JSONResponse(
-                    status_code=status.HTTP_406_NOT_ACCEPTABLE,
+                    status_code=status.HTTP_409_CONFLICT,
                     content=f"Chat [{chatname}] Already Exists",
                 )
 
@@ -212,7 +218,7 @@ class ChatboisServer:
             if invalid_users:
                 self.logger.info(f"Some invalid users: {invalid_users}")
                 return JSONResponse(
-                    status_code=status.HTTP_406_NOT_ACCEPTABLE,
+                    status_code=status.HTTP_404_NOT_FOUND,
                     content=f"Users [{invalid_users}] Not Present in Server, Cannot be Added to Chat",
                 )
 
@@ -225,7 +231,7 @@ class ChatboisServer:
                 self.users[user].chats.append(new_chat.name)
             self.save_server()
             return JSONResponse(
-                status_code=status.HTTP_202_ACCEPTED,
+                status_code=status.HTTP_201_CREATED,
                 content=f"New Chat [{chatname}] added with users {users}",
             )
 
@@ -248,14 +254,14 @@ class ChatboisServer:
 
             if sender not in self.chats[destination].users:
                 return JSONResponse(
-                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    status_code=status.HTTP_403_FORBIDDEN,
                     content=f"User [{sender}] Not Authorized to Message Chat [{destination}]",
                 )
 
             self.chats[destination].history.append(message)
             self.save_server()
             return JSONResponse(
-                status_code=status.HTTP_200_OK,
+                status_code=status.HTTP_201_CREATED,
                 content=f"Message from {sender} Delivered to Chat [{destination}]",
             )
 
@@ -272,7 +278,7 @@ class ChatboisServer:
 
             self.locked = True
             return JSONResponse(
-                status_code=status.HTTP_202_ACCEPTED, content="Server Locked"
+                status_code=status.HTTP_200_OK, content="Server Locked"
             )
 
         @self.app.post("/unlock_server")
@@ -288,7 +294,7 @@ class ChatboisServer:
 
             self.locked = False
             return JSONResponse(
-                status_code=status.HTTP_202_ACCEPTED, content="Server Now Locked"
+                status_code=status.HTTP_200_OK, content="Server Unlocked"
             )
 
         @self.app.post("/increment_users")
@@ -304,7 +310,7 @@ class ChatboisServer:
 
             self.max_users += increment
             return JSONResponse(
-                status_code=status.HTTP_202_ACCEPTED,
+                status_code=status.HTTP_200_OK,
                 content=f"Server Max Users Increased to {self.max_users}",
             )
 
@@ -315,14 +321,15 @@ class ChatboisServer:
             """
             if username not in self.users:
                 return JSONResponse(
-                    status_code=status.HTTP_403_FORBIDDEN,
+                    status_code=status.HTTP_404_NOT_FOUND,
                     content="Username not found in Server",
                 )
 
             if self.users[username].uuid != token:
                 return JSONResponse(
-                    status_code=status.HTTP_403_FORBIDDEN,
+                    status_code=status.HTTP_401_UNAUTHORIZED,
                     content="Token does not match username",
+                    headers={"WWW-Authenticate": "Bearer"},
                 )
 
             if not self.users[username].chats:

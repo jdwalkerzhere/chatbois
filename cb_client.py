@@ -159,7 +159,7 @@ class ChatboisClient:
                     "What do you want your username to be for this Server?"
                 )
                 sucessful_register = requests.post(f"{server_http_address}/register/{username}")
-                if sucessful_register.status_code == 202:
+                if sucessful_register.status_code == 201:
                     uuid = sucessful_register.json()["token"]
                     break
 
@@ -223,7 +223,7 @@ class ChatboisClient:
                 # TODO: Make this more user friendly, handle non-existing users
                 members.append(Prompt.ask(f"[bold italic]Who do you want to add?"))
             response = requests.post(f"{url}{username}/{chatname}", json=members)
-            if response.status_code == 202:
+            if response.status_code == 201:
                 break
             print(f"Error creating chat {chatname}: {response.json()}")
 

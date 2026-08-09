@@ -97,7 +97,7 @@ def build_client_config() -> ClientConfig:
                     "What do you want your username to be for this Server?"
                 )
                 sucessful_register = requests.post(f"{server_http_address}/register/{username}")
-                if sucessful_register.status_code == 202:
+                if sucessful_register.status_code == 201:
                     uuid = sucessful_register.json()["token"]
                     break
 
