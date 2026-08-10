@@ -10,7 +10,6 @@ import uvicorn
 
 from cb_db import load, save
 
-
 class User(BaseModel):
     """
     User class held in the `ChatboisServer.users` field
@@ -338,5 +337,8 @@ class ChatboisServer:
                     content=f"User {username} has no chats to fetch",
                 )
 
-            json_chats = [self.chats[chat].model_dump() for chat in self.users[username].chats]
+            json_chats = [self.chats[chat].model_dump() for chat in (self.users[username].chats or [])]
             return JSONResponse(status_code=status.HTTP_200_OK, content=json_chats)
+
+
+from cb_e2ee_server import ChatboisServer, User, Chat, EncryptedMessage as Message

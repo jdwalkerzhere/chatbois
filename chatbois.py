@@ -8,6 +8,7 @@ from rich import print
 
 import typer
 
+from cb_crypto import generate_identity
 from cb_db import load, save
 from cb_server import ChatboisServer
 from cb_client import ChatboisClient

@@ -279,3 +279,7 @@ class ChatboisClient:
         clear_terminal()
         while True:
             self.nav_levels()
+
+
+# Preserve existing imports while selecting the E2EE endpoint implementation.
+from cb_e2ee_client import ChatboisClient, ClientServer, Chat, EncryptedMessage as Message

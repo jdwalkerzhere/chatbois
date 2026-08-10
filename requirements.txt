@@ -2,6 +2,7 @@ annotated-types==0.7.0
 anyio==4.6.2.post1
 black==24.10.0
 certifi==2024.8.30
+cryptography==43.0.3
 charset-normalizer==3.4.0
 click==8.1.7
 dnspython==2.7.0
